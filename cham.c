@@ -33,6 +33,9 @@ static const size_t CHAM_64_128_ROUNDS = 88;
 static const size_t CHAM_128_128_ROUNDS = 112;
 static const size_t CHAM_128_256_ROUNDS = 120;
 
+	void counter_inc(uint8_t* counter) {
+		counter[7]++;
+	}
 static inline uint16_t rol16(uint16_t value, size_t rot)
 {
     return (value << rot) | (value >> (16 - rot));
@@ -186,6 +189,8 @@ void cham64_encrypt(uint8_t* dst, const uint8_t* src, const uint8_t* rks)
 	
 	//for루프 제거
 	void roundFucloopRemove(){
+		
+
 	blk[0] = rol16((blk[0] ^ (rc++)) + (rol16(blk[1], 1) ^ rk[0]), 8);
 	blk[1] = rol16((blk[1] ^ (rc++)) + (rol16(blk[2], 8) ^ rk[1]), 1);
 	blk[2] = rol16((blk[2] ^ (rc++)) + (rol16(blk[3], 1) ^ rk[2]), 8);
@@ -695,32 +700,47 @@ void cham64_encrypt(uint8_t* dst, const uint8_t* src, const uint8_t* rks)
 		memcpy(dst, blk, BLOCKSIZE_64);
 	}
 		
-   //roundFuc();//cycle counter 7359
+   //roundFuc();//dec:loopremoce7050
    //roundFucFake();//cycle counter9878
-   //roundFucnew();//6740
-   roundFucloopRemove();//o3-cycle counter6912
+   //roundFucnew();//dec:loopremoce6740
+   roundFucloopRemove();//dec:loopremoce6740
    //roundFucUseTemp();//o3-cycle counter10110
-   //roundFucNotUseTemp();//o3-cycle counter7246
-   //roundFucUseTemploopRemove();//o3-cycle counter8320
-   //roundFucNotUseTemploopRemove();//o3-cycle counter8320
+   //roundFucNotUseTemp();//7338
+   //roundFucUseTemploopRemove();//9605
+   //roundFucNotUseTemploopRemove();dec:loopremoce6740
    
 }
-void cham64_ctr_encrypt(uint8_t* dst, const uint8_t* src, const uint16_t src_len, const uint8_t* iv, const uint8_t* rks)
+void cham64_ctr_encrypt(uint8_t* dst, const uint8_t* src, const uint16_t src_len, const uint8_t* counter, const uint8_t* rks)
 {
-	unsigned int n=0;
-	uint8_t counter_buf;
-	uint8_t counter=0;
-	while (src_len--){
-		if(n==0){
-		cham64_encrypt(counter,counter,rks);
-		counter++;
-	}
-	dst=dst^counter;
-	n=(n+1)%BLOCKSIZE_64;
-	}
+	unsigned int n = 0;
+	//uint8_t counter_enc =0;
+	uint8_t pt[8]={0,0,0,0,0,0,0,0};
+	uint8_t counter_buf[8]={0,0,0,0,0,0,0,0};	
+	memcpy(pt,src,BLOCKSIZE_64);
+	memcpy(counter_buf,counter,BLOCKSIZE_64);
+	uint16_t length=src_len;
+	uint8_t encrypted[8] = {0,0,0,0,0,0,0,0};
+
 	
+	while (length--) {
+		if (n == 0) {
+			cham64_encrypt(encrypted, counter_buf, rks);
+			counter_inc(counter_buf);
+		}
+		pt[0] = pt[0] ^ encrypted[0];
+		pt[1] = pt[1] ^ encrypted[1];
+		pt[2] = pt[2] ^ encrypted[2];
+		pt[3] = pt[3] ^ encrypted[3];
+		pt[4] = pt[4] ^ encrypted[4];
+		pt[5] = pt[5] ^ encrypted[5];
+		pt[6] = pt[6] ^ encrypted[6];
+		pt[7] = pt[7] ^ encrypted[7];
+		n = (n + 1) % BLOCKSIZE_64;
+	}
+	memcpy(dst, pt, src_len);
 }
 
+}
 void cham64_decrypt(uint8_t* dst, const uint8_t* src, const uint8_t* rks)
 {
     uint16_t blk[4] = {0};
@@ -729,16 +749,35 @@ void cham64_decrypt(uint8_t* dst, const uint8_t* src, const uint8_t* rks)
     const uint16_t* rk = (const uint16_t*) rks;
     uint16_t rc = CHAM_64_128_ROUNDS;
 	void roundFucdec(){
-    for (size_t round = 0; round < CHAM_64_128_ROUNDS; round += 8) {
-		blk[3] = (ror16(blk[3], 1) - (rol16(blk[0], 8) ^ rk[7])) ^ (--rc);
-        blk[2] = (ror16(blk[2], 8) - (rol16(blk[3], 1) ^ rk[6])) ^ (--rc);
-        blk[1] = (ror16(blk[1], 1) - (rol16(blk[2], 8) ^ rk[5])) ^ (--rc);
-        blk[0] = (ror16(blk[0], 8) - (rol16(blk[1], 1) ^ rk[4])) ^ (--rc);
+		for (size_t round = 0; round < CHAM_64_128_ROUNDS; round += 8) {
+			blk[3] = (ror16(blk[3], 1) - (rol16(blk[0], 8) ^ rk[7])) ^ (--rc);
+			blk[2] = (ror16(blk[2], 8) - (rol16(blk[3], 1) ^ rk[6])) ^ (--rc);
+			blk[1] = (ror16(blk[1], 1) - (rol16(blk[2], 8) ^ rk[5])) ^ (--rc);
+			blk[0] = (ror16(blk[0], 8) - (rol16(blk[1], 1) ^ rk[4])) ^ (--rc);
 
-        blk[3] = (ror16(blk[3], 1) - (rol16(blk[0], 8) ^ rk[3])) ^ (--rc);
-        blk[2] = (ror16(blk[2], 8) - (rol16(blk[3], 1) ^ rk[2])) ^ (--rc);
-        blk[1] = (ror16(blk[1], 1) - (rol16(blk[2], 8) ^ rk[1])) ^ (--rc);
-        blk[0] = (ror16(blk[0], 8) - (rol16(blk[1], 1) ^ rk[0])) ^ (--rc);
+			blk[3] = (ror16(blk[3], 1) - (rol16(blk[0], 8) ^ rk[3])) ^ (--rc);
+			blk[2] = (ror16(blk[2], 8) - (rol16(blk[3], 1) ^ rk[2])) ^ (--rc);
+			blk[1] = (ror16(blk[1], 1) - (rol16(blk[2], 8) ^ rk[1])) ^ (--rc);
+			blk[0] = (ror16(blk[0], 8) - (rol16(blk[1], 1) ^ rk[0])) ^ (--rc);
+
+			rk = (rk == (const uint16_t*)rks) ? rk + 8 : rk - 8;
+		}
+
+		memcpy(dst, blk, BLOCKSIZE_64);}
+	void roundFucdecrorde(){
+    for (size_t round = 0; round < CHAM_64_128_ROUNDS; round += 8) {
+		blk[0]=rol16(blk[0], 8);
+		blk[3] = (ror16(blk[3], 1) - (blk[0] ^ rk[7])) ^ (--rc);
+		blk[2] = (ror16(blk[2], 8) - (rol16(blk[3], 1) ^ rk[6])) ^ (--rc);
+		blk[1] = (ror16(blk[1], 1) - (rol16(blk[2], 8) ^ rk[5])) ^ (--rc);
+		blk[0] = (blk[0] - (rol16(blk[1], 1) ^ rk[4])) ^ (--rc);
+
+		blk[0]=rol16(blk[0], 8);
+		blk[3] = (ror16(blk[3], 1) - (blk[0] ^ rk[3])) ^ (--rc);
+		blk[2] = (ror16(blk[2], 8) - (rol16(blk[3], 1) ^ rk[2])) ^ (--rc);
+		blk[1] = (ror16(blk[1], 1) - (rol16(blk[2], 8) ^ rk[1])) ^ (--rc);
+		blk[0] = (blk[0] - (rol16(blk[1], 1) ^ rk[0])) ^ (--rc);
+
 
         rk = (rk == (const uint16_t*) rks) ? rk + 8 : rk - 8;
     }
@@ -748,6 +787,8 @@ void cham64_decrypt(uint8_t* dst, const uint8_t* src, const uint8_t* rks)
 	//복호화 과정 루프 제거
 	void roundFucdecLoopRemove(){
 	//88~81
+		
+
 		blk[3] = (ror16(blk[3], 1) - (rol16(blk[0], 8) ^ rk[7])) ^ (--rc);
         blk[2] = (ror16(blk[2], 8) - (rol16(blk[3], 1) ^ rk[6])) ^ (--rc);
         blk[1] = (ror16(blk[1], 1) - (rol16(blk[2], 8) ^ rk[5])) ^ (--rc);
@@ -858,8 +899,147 @@ void cham64_decrypt(uint8_t* dst, const uint8_t* src, const uint8_t* rks)
         blk[1] = (ror16(blk[1], 1) - (rol16(blk[2], 8) ^ rk[1])) ^ (--rc);
         blk[0] = (ror16(blk[0], 8) - (rol16(blk[1], 1) ^ rk[0])) ^ (--rc);
 		 memcpy(dst, blk, BLOCKSIZE_64);}
-//roundFucdec();
-roundFucdecLoopRemove();
+		 
+		void roundFucdecrordeunloop(){
+		blk[0]=rol16(blk[0], 8);
+		blk[3] = (ror16(blk[3], 1) - (blk[0] ^ rk[7])) ^ (--rc);
+		blk[2] = (ror16(blk[2], 8) - (rol16(blk[3], 1) ^ rk[6])) ^ (--rc);
+		blk[1] = (ror16(blk[1], 1) - (rol16(blk[2], 8) ^ rk[5])) ^ (--rc);
+		blk[0] = (blk[0] - (rol16(blk[1], 1) ^ rk[4])) ^ (--rc);
+
+		blk[0]=rol16(blk[0], 8);
+		blk[3] = (ror16(blk[3], 1) - (blk[0] ^ rk[3])) ^ (--rc);
+		blk[2] = (ror16(blk[2], 8) - (rol16(blk[3], 1) ^ rk[2])) ^ (--rc);
+		blk[1] = (ror16(blk[1], 1) - (rol16(blk[2], 8) ^ rk[1])) ^ (--rc);
+		blk[0] = (blk[0] - (rol16(blk[1], 1) ^ rk[0])) ^ (--rc);
+
+		blk[0]=rol16(blk[0], 8);
+		blk[3] = (ror16(blk[3], 1) - (blk[0] ^ rk[15])) ^ (--rc);
+		blk[2] = (ror16(blk[2], 8) - (rol16(blk[14], 1) ^ rk[6])) ^ (--rc);
+		blk[1] = (ror16(blk[1], 1) - (rol16(blk[13], 8) ^ rk[5])) ^ (--rc);
+		blk[0] = (blk[0] - (rol16(blk[1], 1) ^ rk[12])) ^ (--rc);
+
+		blk[0]=rol16(blk[0], 8);
+		blk[3] = (ror16(blk[3], 1) - (blk[0] ^ rk[11])) ^ (--rc);
+		blk[2] = (ror16(blk[2], 8) - (rol16(blk[10], 1) ^ rk[2])) ^ (--rc);
+		blk[1] = (ror16(blk[1], 1) - (rol16(blk[9], 8) ^ rk[1])) ^ (--rc);
+		blk[0] = (blk[0] - (rol16(blk[1], 1) ^ rk[8])) ^ (--rc);
+
+		blk[0]=rol16(blk[0], 8);
+		blk[3] = (ror16(blk[3], 1) - (blk[0] ^ rk[7])) ^ (--rc);
+		blk[2] = (ror16(blk[2], 8) - (rol16(blk[3], 1) ^ rk[6])) ^ (--rc);
+		blk[1] = (ror16(blk[1], 1) - (rol16(blk[2], 8) ^ rk[5])) ^ (--rc);
+		blk[0] = (blk[0] - (rol16(blk[1], 1) ^ rk[4])) ^ (--rc);
+
+		blk[0]=rol16(blk[0], 8);
+		blk[3] = (ror16(blk[3], 1) - (blk[0] ^ rk[3])) ^ (--rc);
+		blk[2] = (ror16(blk[2], 8) - (rol16(blk[3], 1) ^ rk[2])) ^ (--rc);
+		blk[1] = (ror16(blk[1], 1) - (rol16(blk[2], 8) ^ rk[1])) ^ (--rc);
+		blk[0] = (blk[0] - (rol16(blk[1], 1) ^ rk[0])) ^ (--rc);
+
+
+       blk[0]=rol16(blk[0], 8);
+       blk[3] = (ror16(blk[3], 1) - (blk[0] ^ rk[15])) ^ (--rc);
+       blk[2] = (ror16(blk[2], 8) - (rol16(blk[14], 1) ^ rk[6])) ^ (--rc);
+       blk[1] = (ror16(blk[1], 1) - (rol16(blk[13], 8) ^ rk[5])) ^ (--rc);
+       blk[0] = (blk[0] - (rol16(blk[1], 1) ^ rk[12])) ^ (--rc);
+
+       blk[0]=rol16(blk[0], 8);
+       blk[3] = (ror16(blk[3], 1) - (blk[0] ^ rk[11])) ^ (--rc);
+       blk[2] = (ror16(blk[2], 8) - (rol16(blk[10], 1) ^ rk[2])) ^ (--rc);
+       blk[1] = (ror16(blk[1], 1) - (rol16(blk[9], 8) ^ rk[1])) ^ (--rc);
+       blk[0] = (blk[0] - (rol16(blk[1], 1) ^ rk[8])) ^ (--rc);
+
+       blk[0]=rol16(blk[0], 8);
+       blk[3] = (ror16(blk[3], 1) - (blk[0] ^ rk[7])) ^ (--rc);
+       blk[2] = (ror16(blk[2], 8) - (rol16(blk[3], 1) ^ rk[6])) ^ (--rc);
+       blk[1] = (ror16(blk[1], 1) - (rol16(blk[2], 8) ^ rk[5])) ^ (--rc);
+       blk[0] = (blk[0] - (rol16(blk[1], 1) ^ rk[4])) ^ (--rc);
+
+       blk[0]=rol16(blk[0], 8);
+       blk[3] = (ror16(blk[3], 1) - (blk[0] ^ rk[3])) ^ (--rc);
+       blk[2] = (ror16(blk[2], 8) - (rol16(blk[3], 1) ^ rk[2])) ^ (--rc);
+       blk[1] = (ror16(blk[1], 1) - (rol16(blk[2], 8) ^ rk[1])) ^ (--rc);
+       blk[0] = (blk[0] - (rol16(blk[1], 1) ^ rk[0])) ^ (--rc);
+
+
+       blk[0]=rol16(blk[0], 8);
+       blk[3] = (ror16(blk[3], 1) - (blk[0] ^ rk[15])) ^ (--rc);
+       blk[2] = (ror16(blk[2], 8) - (rol16(blk[14], 1) ^ rk[6])) ^ (--rc);
+       blk[1] = (ror16(blk[1], 1) - (rol16(blk[13], 8) ^ rk[5])) ^ (--rc);
+       blk[0] = (blk[0] - (rol16(blk[1], 1) ^ rk[12])) ^ (--rc);
+
+       blk[0]=rol16(blk[0], 8);
+       blk[3] = (ror16(blk[3], 1) - (blk[0] ^ rk[11])) ^ (--rc);
+       blk[2] = (ror16(blk[2], 8) - (rol16(blk[10], 1) ^ rk[2])) ^ (--rc);
+       blk[1] = (ror16(blk[1], 1) - (rol16(blk[9], 8) ^ rk[1])) ^ (--rc);
+       blk[0] = (blk[0] - (rol16(blk[1], 1) ^ rk[8])) ^ (--rc);
+
+       blk[0]=rol16(blk[0], 8);
+       blk[3] = (ror16(blk[3], 1) - (blk[0] ^ rk[7])) ^ (--rc);
+       blk[2] = (ror16(blk[2], 8) - (rol16(blk[3], 1) ^ rk[6])) ^ (--rc);
+       blk[1] = (ror16(blk[1], 1) - (rol16(blk[2], 8) ^ rk[5])) ^ (--rc);
+       blk[0] = (blk[0] - (rol16(blk[1], 1) ^ rk[4])) ^ (--rc);
+
+       blk[0]=rol16(blk[0], 8);
+       blk[3] = (ror16(blk[3], 1) - (blk[0] ^ rk[3])) ^ (--rc);
+       blk[2] = (ror16(blk[2], 8) - (rol16(blk[3], 1) ^ rk[2])) ^ (--rc);
+       blk[1] = (ror16(blk[1], 1) - (rol16(blk[2], 8) ^ rk[1])) ^ (--rc);
+       blk[0] = (blk[0] - (rol16(blk[1], 1) ^ rk[0])) ^ (--rc);
+
+       blk[0]=rol16(blk[0], 8);
+       blk[3] = (ror16(blk[3], 1) - (blk[0] ^ rk[15])) ^ (--rc);
+       blk[2] = (ror16(blk[2], 8) - (rol16(blk[14], 1) ^ rk[6])) ^ (--rc);
+       blk[1] = (ror16(blk[1], 1) - (rol16(blk[13], 8) ^ rk[5])) ^ (--rc);
+       blk[0] = (blk[0] - (rol16(blk[1], 1) ^ rk[12])) ^ (--rc);
+
+       blk[0]=rol16(blk[0], 8);
+       blk[3] = (ror16(blk[3], 1) - (blk[0] ^ rk[11])) ^ (--rc);
+       blk[2] = (ror16(blk[2], 8) - (rol16(blk[10], 1) ^ rk[2])) ^ (--rc);
+       blk[1] = (ror16(blk[1], 1) - (rol16(blk[9], 8) ^ rk[1])) ^ (--rc);
+       blk[0] = (blk[0] - (rol16(blk[1], 1) ^ rk[8])) ^ (--rc);
+
+       blk[0]=rol16(blk[0], 8);
+       blk[3] = (ror16(blk[3], 1) - (blk[0] ^ rk[7])) ^ (--rc);
+       blk[2] = (ror16(blk[2], 8) - (rol16(blk[3], 1) ^ rk[6])) ^ (--rc);
+       blk[1] = (ror16(blk[1], 1) - (rol16(blk[2], 8) ^ rk[5])) ^ (--rc);
+       blk[0] = (blk[0] - (rol16(blk[1], 1) ^ rk[4])) ^ (--rc);
+
+       blk[0]=rol16(blk[0], 8);
+       blk[3] = (ror16(blk[3], 1) - (blk[0] ^ rk[3])) ^ (--rc);
+       blk[2] = (ror16(blk[2], 8) - (rol16(blk[3], 1) ^ rk[2])) ^ (--rc);
+       blk[1] = (ror16(blk[1], 1) - (rol16(blk[2], 8) ^ rk[1])) ^ (--rc);
+       blk[0] = (blk[0] - (rol16(blk[1], 1) ^ rk[0])) ^ (--rc);
+
+       blk[0]=rol16(blk[0], 8);
+       blk[3] = (ror16(blk[3], 1) - (blk[0] ^ rk[15])) ^ (--rc);
+       blk[2] = (ror16(blk[2], 8) - (rol16(blk[14], 1) ^ rk[6])) ^ (--rc);
+       blk[1] = (ror16(blk[1], 1) - (rol16(blk[13], 8) ^ rk[5])) ^ (--rc);
+       blk[0] = (blk[0] - (rol16(blk[1], 1) ^ rk[12])) ^ (--rc);
+
+       blk[0]=rol16(blk[0], 8);
+       blk[3] = (ror16(blk[3], 1) - (blk[0] ^ rk[11])) ^ (--rc);
+       blk[2] = (ror16(blk[2], 8) - (rol16(blk[10], 1) ^ rk[2])) ^ (--rc);
+       blk[1] = (ror16(blk[1], 1) - (rol16(blk[9], 8) ^ rk[1])) ^ (--rc);
+       blk[0] = (blk[0] - (rol16(blk[1], 1) ^ rk[8])) ^ (--rc);
+
+       blk[0]=rol16(blk[0], 8);
+       blk[3] = (ror16(blk[3], 1) - (blk[0] ^ rk[7])) ^ (--rc);
+       blk[2] = (ror16(blk[2], 8) - (rol16(blk[3], 1) ^ rk[6])) ^ (--rc);
+       blk[1] = (ror16(blk[1], 1) - (rol16(blk[2], 8) ^ rk[5])) ^ (--rc);
+       blk[0] = (blk[0] - (rol16(blk[1], 1) ^ rk[4])) ^ (--rc);
+
+       blk[0]=rol16(blk[0], 8);
+       blk[3] = (ror16(blk[3], 1) - (blk[0] ^ rk[3])) ^ (--rc);
+       blk[2] = (ror16(blk[2], 8) - (rol16(blk[3], 1) ^ rk[2])) ^ (--rc);
+       blk[1] = (ror16(blk[1], 1) - (rol16(blk[2], 8) ^ rk[1])) ^ (--rc);
+       blk[0] = (blk[0] - (rol16(blk[1], 1) ^ rk[0])) ^ (--rc);
+
+		}
+		//roundFucdecrorde();//7353
+		//roundFucdec();//7353
+		roundFucdecLoopRemove();//7050
+		//roundFucdecrordeunloop();//8464
 }
 
 
